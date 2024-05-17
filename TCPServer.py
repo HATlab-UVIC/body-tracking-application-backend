@@ -12,6 +12,7 @@ from datetime import datetime
 from body_from_image import *
 from TCPClient import *
 from HLCameraCalibration import *
+import ImageRectification as ImRec
 import CoordinateLogging as cl
 
 tracking_img_pth = '../../../examples/media/tracking/'
@@ -78,18 +79,34 @@ def tcp_server():
         if header in acceptable_chars:
             # header 'f' used for sending images from LR front spatial cameras on HoloLens
             if header == 'f':
-                  # NOTE: there may be an issue in the order of undistorting images, getting openpose
-                  # coordinates, and calculating depth that is causing the depth calculation to be
-                  # sparradic
-                  image_file_L, image_file_R = spatial_image_conversion(length, image_data, tracking_img_pth, tracking_img_pth, timestamps)
-                  OP_Coord_String_L = body_from_image.find_points(tracking_img_pth, image_file_L) # Openpose
-                  OP_Coord_String_R = body_from_image.find_points(tracking_img_pth, image_file_R) # Openpose
+                # NOTE: there may be an issue in the order of undistorting images, getting openpose
+                # coordinates, and calculating depth that is causing the depth calculation to be
+                # sparradic
+                image_file_L, ts_L, image_file_R, ts_R = spatial_image_conversion(length, image_data, tracking_img_pth, tracking_img_pth, timestamps)
 
-                  imgL_pth = tracking_img_pth + image_file_L
-                  imgR_pth = tracking_img_pth + image_file_R
+                imgL_pth = tracking_img_pth + image_file_L
+                imgR_pth = tracking_img_pth + image_file_R
 
-                  OP_Coord_String = HLCameraCalibration.Calculate3DCoordiantes(imgL_pth, imgR_pth, OP_Coord_String_L, OP_Coord_String_R) #, OP_Coord_String_L, OP_Coord_String_R
-                  cl.log_coordinates(OP_Coord_String, log_file_prefix)
+                # read the stored images
+                imgL = cv2.imread(imgL_pth)
+                imgR = cv2.imread(imgR_pth)
+
+                frame_left, frame_right = ImRec.undistortRectify(imgL, imgR)    
+
+                # save the image files to the save folder
+                file_name_left = str(ts_L)+'_LF.png'
+                file_name_right = str(ts_R)+'_RF.png'
+                cv2.imwrite(tracking_img_pth + file_name_left, frame_left)
+                cv2.imwrite(tracking_img_pth + file_name_right, frame_right)
+        
+                OP_Coord_String_L = body_from_image.find_points(tracking_img_pth, file_name_left) # Openpose
+                OP_Coord_String_R = body_from_image.find_points(tracking_img_pth, file_name_right) # Openpose
+
+                imgL_pth = tracking_img_pth + file_name_left
+                imgR_pth = tracking_img_pth + file_name_right
+
+                OP_Coord_String = HLCameraCalibration.Calculate3DCoordiantes(imgL_pth, imgR_pth, OP_Coord_String_L, OP_Coord_String_R) #, OP_Coord_String_L, OP_Coord_String_R
+                cl.log_coordinates(OP_Coord_String, log_file_prefix)
 
             # header 'v' used for sending images from PV camera on HoloLens
             if header == 'v':
@@ -101,7 +118,7 @@ def tcp_server():
 
         # header 'c' used for sending calibration images
         if header == 'c':
-            image_file_L, image_file_R = spatial_image_conversion(length, image_data, left_cam_img_pth, right_cam_img_pth, timestamps) 
+            image_file_L, ts_L, image_file_R, ts_R = spatial_image_conversion(length, image_data, left_cam_img_pth, right_cam_img_pth, timestamps) 
 
         if header == 'x':
              print("\nPerforming OpenCV Camera Calibration...\n")
@@ -109,9 +126,9 @@ def tcp_server():
 
         # header 'e' used for sending application closed indicator
         if header == 'e':
-                images = glob.glob(tracking_img_pth + '*.png')
-                for img in images:
-                     os.remove(img)
+                #images = glob.glob(tracking_img_pth + '*.png')
+                #for img in images:
+                     #os.remove(img)
                 print("\n------------------")
                 print("Application Closed")
                 print("------------------")
@@ -122,39 +139,39 @@ def tcp_server():
 
 
 def spatial_image_conversion(len, image_byte_buffer, save_loc_L, save_loc_R, ts):
-     '''
-     Summary:
-     Method is used to convert the byte image buffer into images. The spatial
-     images are received in a combined/single buffer. The left and right spatial
-     images are seperated and stored as independent images.
+    '''
+    Summary:
+    Method is used to convert the byte image buffer into images. The spatial
+    images are received in a combined/single buffer. The left and right spatial
+    images are seperated and stored as independent images.
 
-     Parameters:\n
-     len >> The number of bytes in the image buffer\n
-     image_byte_buffer >> the buffer containing the image bytes\n
-     save_loc_* >> the file path for where to store the images\n
-     ts >> the timestamp associated to the image
+    Parameters:\n
+    len >> The number of bytes in the image buffer\n
+    image_byte_buffer >> the buffer containing the image bytes\n
+    save_loc_* >> the file path for where to store the images\n
+    ts >> the timestamp associated to the image
 
-     Returns:\n
-     file_name_* >> return the file names so the images can be processed by openpose
-     '''
+    Returns:\n
+    file_name_* >> return the file names so the images can be processed by openpose
+    '''
 
-     ts_left, ts_right = struct.unpack(">qq", ts)
+    ts_left, ts_right = struct.unpack(">qq", ts)
 
-     byte_split = int(len/2)
+    byte_split = int(len/2)
 
-     # convert image bytes into images
-     LF_img_np = np.frombuffer(image_byte_buffer[0:byte_split], np.uint8).reshape((480,640))
-     LF_img_np = cv2.rotate(LF_img_np, cv2.ROTATE_90_CLOCKWISE)
-     RF_img_np = np.frombuffer(image_byte_buffer[byte_split:len], np.uint8).reshape((480,640))
-     RF_img_np = cv2.rotate(RF_img_np, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    
-     # save the image files to the save folder
-     file_name_left = str(ts_left)+'_LF.png'
-     file_name_right = str(ts_right)+'_RF.png'
-     cv2.imwrite(save_loc_L + file_name_left, LF_img_np)
-     cv2.imwrite(save_loc_R + file_name_right, RF_img_np)
+    # convert image bytes into images
+    LF_img_np = np.frombuffer(image_byte_buffer[0:byte_split], np.uint8).reshape((480,640))
+    LF_img_np = cv2.rotate(LF_img_np, cv2.ROTATE_90_CLOCKWISE)
+    RF_img_np = np.frombuffer(image_byte_buffer[byte_split:len], np.uint8).reshape((480,640))
+    RF_img_np = cv2.rotate(RF_img_np, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
-     return file_name_left, file_name_right
+    # save the image files to the save folder
+    file_name_left = str(ts_left)+'_LF.png'
+    file_name_right = str(ts_right)+'_RF.png'
+    cv2.imwrite(save_loc_L + file_name_left, LF_img_np)
+    cv2.imwrite(save_loc_R + file_name_right, RF_img_np)
+
+    return file_name_left, ts_left, file_name_right, ts_right
 
 
 def pv_image_conversion(image_byte_buffer, save_loc):
