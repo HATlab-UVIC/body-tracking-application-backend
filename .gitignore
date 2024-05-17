@@ -1,0 +1,8 @@
+__pycache__/
+.vs/
+CMakeFiles/
+logs/
+cmake_install.cmake
+INSTALL.vcxproj
+INSTALL.vcxproj.filters
+*.xml
