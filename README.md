@@ -15,7 +15,7 @@ The pipeline includes processes such as:
 
 |Script|Desc|
 |------|----|
-|TCPClient.py|Responsible for transmitting the extracted body joint coordinates back to the unity application to be displayed for the user.|
+|[TCPClient.py](./TCPClient.py)|Responsible for transmitting the extracted body joint coordinates back to the unity application to be displayed for the user.|
 |TCPServer.py|Responsible for receiving the stream of images sent by the unity application, and enacting the processing pipeline for processing the images to extract the body joint coordinates.|
 |HLCameraCalibration.py|Used for calibrating the front facing stereo cameras on the HoloLens 2 device, as well as performing the depth calculation for determining the depth of each independent joint.|
 |CoordinateLogging.py|Used for logging the extracted body joint coordinates to view changes between coordinate frames.|  
