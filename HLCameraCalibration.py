@@ -110,7 +110,7 @@ class HLCameraCalibration:
         return True
     
     
-    def Calculate3DCoordiantes(img_left, img_right, coordL, coordR): #, coordL, coordR
+    def Calculate3DCoordiantes(img_left, img_right, coordL, coordR, draw_path): #, coordL, coordR
         '''
         Summary:
         Function is used to calculate the depth coordinate value from
@@ -130,17 +130,11 @@ class HLCameraCalibration:
         fov = 60        #camera field of view in the horizontal plane [degrees]
         print("Calculating 3D coordinates")
 
-        # read the stored images
-        #imgL = cv2.imread(img_left)
-        #imgR = cv2.imread(img_right)
-
-        #frame_left, frame_right = ImRec.undistortRectify(imgL, imgR)
-
-        #OP_Coord_String_L = body_from_image.find_points(frame_left, imgL) # Openpose
-        #OP_Coord_String_R = body_from_image.find_points(frame_right, imgR) # Openpose
-
         coordL_array = HLCameraCalibration.convert_string_to_npArray(coordL) #OP_Coord_String_L
         coordR_array = HLCameraCalibration.convert_string_to_npArray(coordR) #OP_Coord_String_R
+
+        img_left_copy = img_left.copy()
+        img_right_copy = img_right.copy()
 
         coordinate_output = '[['
         for i in range(25):
@@ -148,16 +142,23 @@ class HLCameraCalibration:
             pointL = coordL_array[i]
             xL, yL = pointL
             calc_p_L = (xL, yL)
+            cv2.circle(img_left_copy, calc_p_L, radius=3, color=(0,0,255), thickness=-1)
 
             pointR = coordR_array[i]
             xR, yR = pointR
             calc_p_R = (xR, yR)
+            cv2.circle(img_right_copy, calc_p_R, radius=3, color=(0,0,255), thickness=-1)
 
             depth = tri.find_depth(calc_p_L, calc_p_R, img_left, img_right, B, f, fov)
 
-            coordinate_output += f'[{xL} {yL} {0}]' # replace 0 with depth to have 3D
+            coordinate_output += f'[{xL} {yL} {depth}]' # replace 0 with depth to have 3D
 
         coordinate_output += ']]'
+        
+        combined_img = np.hstack((img_left_copy, img_right_copy))
+        cv2.imshow('images with coordinates', combined_img)
+        cv2.waitKey(1)
+        
         return coordinate_output
 
     
