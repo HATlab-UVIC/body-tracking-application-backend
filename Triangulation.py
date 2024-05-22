@@ -7,8 +7,9 @@ https://github.com/niconielsen32/ComputerVision/tree/master/StereoVisionDepthEst
 
 def find_depth(left_point, right_point, frame_left, frame_right, baseline, f, fov):
     # CONVERT FOCAL LENGTH f FROM [mm] TO [pixel]:
-    height_right, width_right = frame_right.shape
-    height_left, width_left = frame_left.shape
+    #print(frame_right.shape)
+    height_right, width_right, z = frame_right.shape
+    height_left, width_left, z = frame_left.shape
     
 
     if width_right == width_left:
