@@ -16,10 +16,11 @@ import ImageRectification as ImRec
 import CoordinateLogging as cl
 
 tracking_img_pth = '../../../examples/media/tracking/'
+draw_img_pth = '../../../examples/media/coord_draw/'
 calib_folder = '../../../examples/media/calibration_images/'
 left_cam_img_pth =  '../../../examples/media/calibration_images/left_camera/'
 right_cam_img_pth =  '../../../examples/media/calibration_images/right_camera/'
-paths = [tracking_img_pth, calib_folder, left_cam_img_pth, right_cam_img_pth, cl.log_folder, cl.coord_log_dir]
+paths = [tracking_img_pth, draw_img_pth, calib_folder, left_cam_img_pth, right_cam_img_pth, cl.log_folder, cl.coord_log_dir]
 
 def tcp_server():
     '''
@@ -82,30 +83,15 @@ def tcp_server():
                 # NOTE: there may be an issue in the order of undistorting images, getting openpose
                 # coordinates, and calculating depth that is causing the depth calculation to be
                 # sparradic
-                image_file_L, ts_L, image_file_R, ts_R = spatial_image_conversion(length, image_data, tracking_img_pth, tracking_img_pth, timestamps)
+                image_file_L, image_file_R = spatial_image_conversion(length, image_data, tracking_img_pth, tracking_img_pth, timestamps)  
 
-                imgL_pth = tracking_img_pth + image_file_L
-                imgR_pth = tracking_img_pth + image_file_R
+                imgL = cv2.imread(tracking_img_pth + image_file_L)
+                imgR = cv2.imread(tracking_img_pth + image_file_R)
 
-                # read the stored images
-                imgL = cv2.imread(imgL_pth)
-                imgR = cv2.imread(imgR_pth)
+                OP_Coord_String_L = body_from_image.find_points(tracking_img_pth, image_file_L) # Openpose
+                OP_Coord_String_R = body_from_image.find_points(tracking_img_pth, image_file_R) # Openpose
 
-                frame_left, frame_right = ImRec.undistortRectify(imgL, imgR)    
-
-                # save the image files to the save folder
-                file_name_left = str(ts_L)+'_LF.png'
-                file_name_right = str(ts_R)+'_RF.png'
-                cv2.imwrite(tracking_img_pth + file_name_left, frame_left)
-                cv2.imwrite(tracking_img_pth + file_name_right, frame_right)
-        
-                OP_Coord_String_L = body_from_image.find_points(tracking_img_pth, file_name_left) # Openpose
-                OP_Coord_String_R = body_from_image.find_points(tracking_img_pth, file_name_right) # Openpose
-
-                imgL_pth = tracking_img_pth + file_name_left
-                imgR_pth = tracking_img_pth + file_name_right
-
-                OP_Coord_String = HLCameraCalibration.Calculate3DCoordiantes(imgL_pth, imgR_pth, OP_Coord_String_L, OP_Coord_String_R) #, OP_Coord_String_L, OP_Coord_String_R
+                OP_Coord_String = HLCameraCalibration.Calculate3DCoordiantes(imgL, imgR, OP_Coord_String_L, OP_Coord_String_R, draw_img_pth)
                 cl.log_coordinates(OP_Coord_String, log_file_prefix)
 
             # header 'v' used for sending images from PV camera on HoloLens
@@ -168,10 +154,13 @@ def spatial_image_conversion(len, image_byte_buffer, save_loc_L, save_loc_R, ts)
     # save the image files to the save folder
     file_name_left = str(ts_left)+'_LF.png'
     file_name_right = str(ts_right)+'_RF.png'
+
+    #und_frame_left, und_frame_right = ImRec.undistortRectify(LF_img_np, RF_img_np)
+
     cv2.imwrite(save_loc_L + file_name_left, LF_img_np)
     cv2.imwrite(save_loc_R + file_name_right, RF_img_np)
 
-    return file_name_left, ts_left, file_name_right, ts_right
+    return file_name_left, file_name_right
 
 
 def pv_image_conversion(image_byte_buffer, save_loc):
