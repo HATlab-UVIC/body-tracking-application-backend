@@ -92,6 +92,7 @@ def tcp_server():
                 OP_Coord_String_R = body_from_image.find_points(tracking_img_pth, image_file_R) # Openpose
 
                 OP_Coord_String = HLCameraCalibration.Calculate3DCoordiantes(imgL, imgR, OP_Coord_String_L, OP_Coord_String_R, draw_img_pth)
+                print(OP_Coord_String)
                 cl.log_coordinates(OP_Coord_String, log_file_prefix)
 
             # header 'v' used for sending images from PV camera on HoloLens
