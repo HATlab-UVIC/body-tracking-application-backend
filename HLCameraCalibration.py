@@ -125,7 +125,7 @@ class HLCameraCalibration:
         coordinate_output >> the coordinate string containing all the 3D joint coordinates
         '''
         frame_rate = 30 #camera frame rate
-        B = 10          #distance between the cameras [cm]
+        B = 0.1          #distance between the cameras [m]
         f = 8           #Camera lens' focal length [mm]
         fov = 60        #camera field of view in the horizontal plane [degrees]
         print("Calculating 3D coordinates")
