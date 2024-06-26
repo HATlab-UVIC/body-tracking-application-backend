@@ -9,10 +9,21 @@ class TCPClient:
     def __init__(self, device_IP, device_Port):
         self.HoloLens_Connection_IP = device_IP
         self.HoloLens_Connection_Port = 8080
+        self.writer = None
+
+
+    async def connect_to_server(self):
+        try:
+            _, self.writer = await asyncio.open_connection(self.HoloLens_Connection_IP, self.HoloLens_Connection_Port)
+        except ConnectionRefusedError as e:
+            print(f'TCPClient : Connection error <{e}>')
+            return False
+        print('TCPClient : Connected to the server : ', self.writer.get_extra_info('peername'))
+        return True
 
 
     #connects this client to the hololens server                                      
-    async def tcp_echo_client(self,data_msg, loop):
+    async def tcp_echo_client(self,data_msg):
         '''
         Summary:\n
         Function is used to establish a connection to the remote TCP Server and send
@@ -23,18 +34,14 @@ class TCPClient:
         loop >> Event loop used for sending all the data
         '''
 
-        # establish a connection with the HoloLens
-        _, writer = await asyncio.open_connection(self.HoloLens_Connection_IP, self.HoloLens_Connection_Port, loop=loop)
-
         try:
-            writer.write(data_msg)
-            await writer.drain()
-            writer.write_eof()
+            self.writer.write(data_msg)
+            await self.writer.drain()
         except (ConnectionResetError, ConnectionAbortedError) as e:
             print(f'TCPClient : Connection error <{e}>')
 
 
-    def sendPoints(self,openpose_coordinates):
+    async def sendData(self,msg_ID,byte_data):
         '''
         Summary:\n
         Function takes in the openpose coordinate data and encodes it to be sent
@@ -44,24 +51,37 @@ class TCPClient:
         string >> The openpose coordinate data
         '''
 
-        loop = asyncio.new_event_loop()
+        if self.writer is None or self.writer.is_closing():
+            print('\tTCPClient :: Reconnecting to the server...')
+            if not await self.connect_to_server():
+                return # Exit if connection fails
+            
+        print('TCPClient :: Sending data to the server >> ', msg_ID)
+        data_msg = TCPClient.encode_data(msg_ID, byte_data)
+        await self.tcp_echo_client(data_msg)
 
-        # encoding data bytes
-        data = bytes(openpose_coordinates, "utf-8")
+    @staticmethod
+    def encode_data(msg_ID, data_transmission):
+        """
+        Encodes the given openpose coordinates into a formatted message.
+
+        Args:
+        - openpose_coordinates (str): The openpose coordinates to encode.
+
+        Returns:
+        - bytes: The encoded message.
+        """
+        data = bytes(data_transmission, "utf-8")
         encoded_data = base64.b64encode(data)
 
-        # the length of the encoded bytes
-        length = struct.pack('!I', len(encoded_data))
-        encoded_length = base64.b64encode(length)
-
-        # the message beginning/validity identifier
-        msg_id = struct.pack('!B', 0x01)
+        msg_id = struct.pack('!B', msg_ID)
         encoded_msg_id = base64.b64encode(msg_id)
 
-        # combine into 1 message
-        data_msg = encoded_msg_id + encoded_length + encoded_data  
+        if msg_ID == 0x01:
+            length = struct.pack('!I', len(encoded_data))
+            encoded_length = base64.b64encode(length)
 
-        loop.run_until_complete(self.tcp_echo_client(data_msg, loop))
-
-        loop.close()
+            return encoded_msg_id + encoded_length + encoded_data
+        
+        return encoded_msg_id + encoded_data
 
