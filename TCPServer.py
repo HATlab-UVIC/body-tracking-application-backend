@@ -38,6 +38,72 @@ def tcp_server():
     for path in paths:
          directory_check(path)
 
+    sock_connection, tcp_client = tcp_connection_setup(serverHost, serverPort)
+
+    image_stream_chars = ['f', 'v']
+    log_date = datetime.now()
+    log_file_prefix = log_date.strftime("%d%m%Y-%H%M%S")
+    #loop for receiving data during app runtime
+    while True:
+        start_time = datetime.now()
+        try:
+            header, length, timestamps, image_data = receive_tcp_message(sock_connection)
+        except EOFError as e:
+            print(f"TCPServer :: receive_tcp_message() :: ERROR \n\t{e}")
+            error_count += 1
+            if error_count > 10:
+                receive_error_handler(tcp_client, sock_connection)
+                break
+            continue
+
+        print(f"Header received >> {header}")
+        if header in image_stream_chars:
+            # header 'f' used for sending images from LR front spatial cameras on HoloLens
+            if header == 'f': #===========================================================
+                image_file_L, image_file_R = spatial_image_conversion(length, image_data, tracking_img_pth, tracking_img_pth, timestamps)  
+
+                imgL = cv2.imread(tracking_img_pth + image_file_L)
+                imgR = cv2.imread(tracking_img_pth + image_file_R)
+
+                OP_Coord_String_L = body_from_image.find_points(tracking_img_pth, image_file_L) # Openpose
+                OP_Coord_String_R = body_from_image.find_points(tracking_img_pth, image_file_R) # Openpose
+
+                OP_Coord_String = HLCameraCalibration.Calculate3DCoordiantes(imgL, imgR, OP_Coord_String_L, OP_Coord_String_R, draw_img_pth)
+                print(OP_Coord_String)
+                cl.log_coordinates(OP_Coord_String, log_file_prefix)
+
+            # header 'v' used for sending images from PV camera on HoloLens
+            if header == 'v': #===========================================================
+                image_file = pv_image_conversion(image_data, tracking_img_pth)
+
+                OP_Coord_String = body_from_image.find_points(tracking_img_pth, image_file) # Openpose
+
+            handle_client_sync(tcp_client, 0x01, OP_Coord_String) # Sending data to HoloLens
+
+        # header 'c' used for sending calibration images
+        if header == 'c': #===============================================================
+            image_file_L, ts_L, image_file_R, ts_R = spatial_image_conversion(length, image_data, left_cam_img_pth, right_cam_img_pth, timestamps) 
+
+        if header == 'x': #===============================================================
+             print("\nPerforming OpenCV Camera Calibration...\n")
+             ret = HLCameraCalibration.OpenCV_Chess_Calibration(left_cam_img_pth, right_cam_img_pth)
+
+        # header 'e' used for sending application closed indicator
+        if header == 'e': #===============================================================
+                images = glob.glob(tracking_img_pth + '*.png')
+                for img in images:
+                     os.remove(img)
+                print("\n------------------")
+                print("Application Closed")
+                print("------------------")
+                sock_connection.close()
+                return # stop execution of script
+
+        end_time = datetime.now()
+        print("TCPServer :: Image Processed :: runtime (", end_time-start_time,")")
+
+
+def tcp_connection_setup(serverHost, serverPort):
     # create a stream socket for receiving data
     sSock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -64,65 +130,7 @@ def tcp_server():
         except Exception:
             continue
 
-    acceptable_chars = ['f', 'v']
-    log_date = datetime.now()
-    log_file_prefix = log_date.strftime("%d%m%Y-%H%M%S")
-    #loop for receiving data during app runtime
-    while True:
-        start_time = datetime.now()
-        try:
-                header, length, timestamps, image_data = receive_tcp_message(conn)
-        except EOFError as e:
-                print(f"TCPServer :: receive_tcp_message() :: ERROR \n{e}")
-                continue
-
-        print(f"Header received >> {header}")
-        if header in acceptable_chars:
-            # header 'f' used for sending images from LR front spatial cameras on HoloLens
-            if header == 'f':
-                # NOTE: there may be an issue in the order of undistorting images, getting openpose
-                # coordinates, and calculating depth that is causing the depth calculation to be
-                # sparradic
-                image_file_L, image_file_R = spatial_image_conversion(length, image_data, tracking_img_pth, tracking_img_pth, timestamps)  
-
-                imgL = cv2.imread(tracking_img_pth + image_file_L)
-                imgR = cv2.imread(tracking_img_pth + image_file_R)
-
-                OP_Coord_String_L = body_from_image.find_points(tracking_img_pth, image_file_L) # Openpose
-                OP_Coord_String_R = body_from_image.find_points(tracking_img_pth, image_file_R) # Openpose
-
-                OP_Coord_String = HLCameraCalibration.Calculate3DCoordiantes(imgL, imgR, OP_Coord_String_L, OP_Coord_String_R, draw_img_pth)
-                print(OP_Coord_String)
-                cl.log_coordinates(OP_Coord_String, log_file_prefix)
-
-            # header 'v' used for sending images from PV camera on HoloLens
-            if header == 'v':
-                image_file = pv_image_conversion(image_data, tracking_img_pth)
-
-                OP_Coord_String = body_from_image.find_points(tracking_img_pth, image_file) # Openpose
-
-            client.sendPoints(OP_Coord_String)
-
-        # header 'c' used for sending calibration images
-        if header == 'c':
-            image_file_L, ts_L, image_file_R, ts_R = spatial_image_conversion(length, image_data, left_cam_img_pth, right_cam_img_pth, timestamps) 
-
-        if header == 'x':
-             print("\nPerforming OpenCV Camera Calibration...\n")
-             ret = HLCameraCalibration.OpenCV_Chess_Calibration(left_cam_img_pth, right_cam_img_pth)
-
-        # header 'e' used for sending application closed indicator
-        if header == 'e':
-                #images = glob.glob(tracking_img_pth + '*.png')
-                #for img in images:
-                     #os.remove(img)
-                print("\n------------------")
-                print("Application Closed")
-                print("------------------")
-                return # stop execution of script
-
-        end_time = datetime.now()
-        print("TCPServer :: Image Processed :: runtime (", end_time-start_time,")")
+    return conn, client
 
 
 def spatial_image_conversion(len, image_byte_buffer, save_loc_L, save_loc_R, ts):
@@ -266,6 +274,18 @@ def receive_all(sock, data_len):
 
      return image_bytes
   
+
+def receive_error_handler(tcp_client, sock_connection):
+    print("TCPServer :: Connection Error :: Closing Connection")
+    handle_client_sync(tcp_client, 0x05, '\x02') # HL client connection indicator >> ON
+    sock_connection.close()
+
+
+def handle_client_sync(tcp_client, id, data):
+    loop = asyncio.get_event_loop()
+    task = loop.create_task(tcp_client.sendData(id, data))
+    loop.run_until_complete(task)
+
 
 def directory_check(dir):
     if not os.path.isdir(dir):
